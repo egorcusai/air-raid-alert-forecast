@@ -181,6 +181,10 @@ honest, which is why we never lead with accuracy.
 air-raid-forecast/
 ├── run_all.py              # one-command reproduction (+ comparison)
 ├── requirements.txt
+├── web/                    # deployable dashboard (Vercel root = web/)
+│   └── index.html          # self-contained UI, data embedded
+├── scripts/
+│   └── build_dashboard.py  # regenerate embedded dashboard data
 ├── src/
 │   ├── data_loader.py      # download, clean, filter region
 │   ├── features.py         # hourly grid, historical windows, target, spatial toggle
