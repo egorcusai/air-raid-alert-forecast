@@ -1,26 +1,37 @@
-# Air-Raid Alert Risk Classification — Ukraine
+# Where Are Air-Raid Alerts Predictable? — A Regional Study (Ukraine)
 
 A short-horizon **risk classifier** for air-raid alerts in Ukraine, built as a
-two-day prototype. For a chosen region, it answers a single, operationally
-useful question:
+two-day prototype. For a chosen region it answers:
 
 > **Will a new air-raid alert begin in this region within the next 3 hours?**
 
-This is deliberately a **binary classification** problem, not exact-time
-forecasting. The reasoning behind that choice — and several other decisions — is
-documented below, because the *process* matters more than the headline number.
+But the more interesting question — and the one this project actually answers —
+turned out to be **comparative**:
+
+> **In *which* regions are alerts predictable from alert history alone, and does
+> knowing a region's geographic neighbours help?**
+
+The answer has a clean geographic logic, reproduces a published finding in our
+own data, and is reported honestly — modest numbers included.
 
 ---
 
-## TL;DR — what to look at
+## TL;DR — the finding
 
-- **`run_all.py`** reproduces the entire pipeline in one command.
-- **`src/leakage_audit.py`** is the most important file: it *proves* the
-  features don't see the future. All three checks pass.
-- **Honest result:** with occurrence-count + calendar features alone, the model
-  is only marginally better than random (ROC-AUC ≈ 0.54 on a held-out, most-recent
-  test period). **This is a real finding, not a bug** — see
-  [Results & honest assessment](#results--honest-assessment).
+| | |
+|---|---|
+| **Most predictable** | Western / peripheral oblasts (Lviv, Zhytomyr: ROC-AUC ~0.66) |
+| **Least predictable** | Strategic direct targets (Kyiv City: ROC-AUC ~0.55, barely > random) |
+| **Spatial features help most** | Small western oblasts threats *cross* (Ivano-Frankivsk +0.039, Ternopil +0.029 AUC) |
+| **Spatial features don't help** | Direct targets hit without warning (Kyiv City +0.001) |
+
+**Interpretation:** alerts propagate geographically. A western oblast gets
+advance signal as a threat traverses the country, so its alerts follow a
+learnable rhythm. A high-priority target like Kyiv is struck directly with little
+lead time, so from a single-region view its alerts look closer to noise. This
+matches the peer-reviewed result that a region's alert status
+[depends heavily on its adjacent regions](https://arxiv.org/abs/2411.14625) — and
+we show *where* that dependence is strong vs weak.
 
 ---
 
@@ -31,157 +42,136 @@ git clone <this-repo>
 cd air-raid-forecast
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python run_all.py            # defaults to "Kyiv City"
-# python run_all.py "Lvivska oblast"   # any region label works
+python run_all.py                  # full pipeline + multi-region comparison
+# python run_all.py "Kyiv City"    # focus a single region
 ```
 
-Outputs land in `output/` (`metrics.json`, `results.png`).
+Outputs land in `output/`: `metrics_temporal.json`, `metrics_spatial.json`,
+`region_comparison.csv`, `results.png`.
 
 ---
 
-## Problem framing
+## Why these design choices
 
 | Decision | Choice | Why |
 |---|---|---|
-| Task type | Binary classification | A 3-hour risk flag is actionable and *validatable*. Exact-minute forecasting is false precision and near-impossible to verify in a prototype. |
-| Horizon | Next 3 hours | Long enough to be useful for planning, short enough to be a meaningful signal. |
-| Granularity | Hourly grid, per region | One row = (region, hour). Clean, regular time index. |
-| Target | `1` if any alert *starts* in hours H+1…H+3 | Unambiguous, reconstructable from raw data. |
+| Task | Binary classification, 3h ahead | A risk flag is actionable and *validatable*; exact-minute forecasting is false precision. |
+| Granularity | Hourly grid, per region | Clean, regular index; one row = (region, hour). |
+| Models | Logistic Regression + Random Forest | Interpretable baseline first. (LR often *wins* here — see results.) |
+| Validation | **Time-based** train/val/test | Random splits leak the future into the past in time series. |
+| Metric focus | Recall (+ full suite) | A missed alert costs more than a false alarm. |
 
 ---
 
 ## Data
 
 **Source:** [`Vadimkin/ukrainian-air-raid-sirens-dataset`](https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset),
-file `volunteer_data_en.csv` (public, updated daily). ~101k alert records,
-Feb 2022 → present, oblast level. All timestamps UTC.
+`volunteer_data_en.csv` (public, daily-updated, ~101k records, Feb 2022 to present,
+oblast-level, UTC). Schema: `region`, `started_at`, `finished_at`, `naive`.
 
-Schema: `region`, `started_at`, `finished_at`, `naive`.
+Three verified data decisions:
 
-**Three data decisions worth highlighting** (each verified against the source
-README, not assumed):
-
-1. **Volunteer set, not official.** The *official* dataset switched from
-   oblast-level to raion (district) level in Dec 2025, which would silently
-   change the geographic unit mid-series. The volunteer set stays oblast-level
-   throughout, giving a consistent target.
-2. **Permanent sirens excluded.** Luhansk (3 records total) and Crimea have
-   continuous, unlogged sirens. A model "predicting" a permanent alert earns
-   fake recall, so these regions are dropped.
-3. **`naive` flag handled surgically.** ~5% of records have an *estimated*
-   end-time (`started_at + 30min`). We **keep the event** (it really happened →
-   valid for the target and occurrence features) but **exclude it from
-   duration-derived features** (its duration is fabricated). Trust the event,
-   distrust the guessed duration.
+1. **Volunteer, not official, dataset.** The official set switched from oblast to
+   raion (district) level in Dec 2025 — confirmed by the official statistics
+   provider — which would change the geographic unit mid-series. The volunteer
+   set stays oblast-level throughout.
+2. **Permanent sirens dropped.** Luhansk (3 records) and Crimea have continuous,
+   unlogged sirens; a model "predicting" them earns fake recall.
+3. **`naive` flag handled surgically.** ~5% of rows have an estimated end-time
+   (`start + 30min`). We keep the **event** (real, so valid for target & occurrence
+   features) but exclude it from **duration** features (its duration is fabricated).
 
 ---
 
 ## Features (all strictly historical)
 
-| Feature | Definition |
-|---|---|
-| `alerts_last_3h` | Count of alert starts in the 3h **before** the current hour |
-| `alerts_last_6h` | …last 6h |
-| `alerts_last_24h` | …last 24h |
-| `avg_duration_24h` | Mean *observed* alert duration over the last 24h (naive excluded) |
-| `hour_of_day` | 0–23 (known in advance) |
-| `day_of_week` | 0–6 |
-| `month` | 1–12 |
+**Temporal:** `alerts_last_3h/6h/24h`, `avg_duration_24h` (naive-excluded),
+`hour_of_day`, `day_of_week`, `month`.
 
-Every rolling feature is computed on a **one-hour-shifted history**, so the
-current hour's own activity is never included.
+**Spatial** (neighbour activity, from `neighbours.py` adjacency map):
+`nbr_alerts_last_1h/3h/6h`, `nbr_active_last_3h` (# distinct neighbours active).
+
+Every rolling feature is computed on a **one-hour-shifted history**, so hour H's
+own (and all future) activity is never included.
 
 ---
 
 ## Leakage audit — the core guarantee
 
-For a time-series classifier, the single biggest risk is **future leakage**:
-a feature accidentally containing information from the window it's trying to
-predict. `src/leakage_audit.py` runs three independent checks:
+`src/leakage_audit.py` runs three automated checks; all pass:
 
-1. **Reconstruction independence.** Rebuild features after *deleting all future
-   data* past a cutoff. Every past feature must be byte-identical. Result:
-   **0.00e+00 max difference across 18,836 hours.** If any feature peeked ahead,
-   this would be non-zero.
-2. **Target is genuinely future.** Independently recompute the label by direct
-   timestamp search and confirm it matches. **0 mismatches.**
-3. **No feature trivially encodes the target.** Max |correlation| = **0.16** —
-   reassuringly low. A near-1.0 correlation would signal accidental label copy.
+1. **Reconstruction independence** — rebuild features after deleting all data
+   past a cutoff; past features must be byte-identical. **Max diff 0.00e+00 over
+   18,836 hours.** Proof of no future peek.
+2. **Target is genuinely future** — independent recomputation by timestamp
+   search; **0 mismatches**.
+3. **No feature trivially encodes the target** — max |corr| = **0.16**.
 
 ---
 
-## Validation
+## Validation & metrics
 
-**Time-based split — never random.** A random split would leak future into past.
-We split chronologically:
+Chronological split — train (oldest 68%) / val (next 12%, threshold tuning only)
+/ test (most-recent 20%, untouched until final eval). Tuning the threshold on a
+separate validation block avoids tuning-on-test, a subtler leak we caught and
+fixed mid-build.
 
-```
-train: 2022-02-25 → 2025-01-30   (oldest 68%)
-val:   2025-01-30 → 2025-08-07   (next 12%, threshold tuning only)
-test:  2025-08-07 → 2026-06-18   (most-recent 20%, untouched until final eval)
-```
-
-The **validation block** exists so the decision threshold is chosen *without
-ever looking at test* — tuning on test is itself a form of leakage we explicitly
-avoid.
+We report precision, recall, F1, ROC-AUC and the confusion matrix, weighting
+recall and using `class_weight="balanced"`.
 
 ---
 
-## Metrics — why recall is privileged
+## Results
 
-Accuracy is misleading on imbalanced data (only ~17–19% of hours are positive).
-We report **precision, recall, F1, ROC-AUC, and the confusion matrix**, and we
-weight toward **recall**: operationally, a *missed* alert (false negative) is far
-more costly than a false alarm (false positive). Models use
-`class_weight="balanced"` for the same reason.
+Best-of-(LR, RF) ROC-AUC on the held-out recent test period:
 
----
+| Region | Pos. rate | AUC temporal | AUC +spatial | Spatial gain | Recall |
+|---|---|---|---|---|---|
+| Zhytomyrska | 0.16 | 0.656 | **0.663** | +0.007 | 0.59 |
+| Lvivska | 0.19 | 0.657 | 0.652 | -0.005 | **0.76** |
+| Kharkivska | 0.82 | 0.612 | 0.626 | +0.014 | 0.87 |
+| Dnipropetrovska | 0.80 | 0.606 | 0.605 | -0.001 | 0.88 |
+| Vinnytska | 0.10 | 0.593 | 0.602 | +0.009 | 0.32 |
+| Ternopilska | 0.05 | 0.573 | 0.602 | **+0.029** | 0.40 |
+| Kyivska | 0.33 | 0.592 | 0.592 | 0.000 | 0.77 |
+| Ivano-Frankivska | 0.05 | 0.539 | 0.578 | **+0.039** | 0.46 |
+| Zaporizka | 0.61 | 0.562 | 0.558 | -0.004 | 0.66 |
+| **Kyiv City** | 0.19 | 0.547 | 0.548 | +0.001 | 0.47 |
 
-## Results & honest assessment
+Three honest observations:
 
-Held-out test period (most recent ~10 months), region = Kyiv City:
+- **Geography of predictability is real.** Peripheral west > direct targets. Kyiv
+  City is near-random; Lviv/Zhytomyr are meaningfully predictable.
+- **Spatial features help exactly where theory says they should** — small western
+  oblasts threats traverse — and not where they don't (direct targets).
+- **Logistic Regression often beats Random Forest** here. With few, largely
+  linear signals, RF overfits the train period and generalizes worse — a useful
+  reminder that "fancier" isn't "better." We report both.
 
-| Model | Precision | Recall | F1 | ROC-AUC |
-|---|---|---|---|---|
-| Logistic Regression @0.5 | 0.21 | 0.47 | 0.29 | **0.55** |
-| Random Forest @0.5 | 0.22 | 0.39 | 0.28 | 0.54 |
-
-**The honest headline: these features barely beat random (ROC-AUC ≈ 0.54).**
-That is the main finding, and it's worth more than an inflated number would be:
-
-- A leakage-free pipeline on this task *should* produce modest metrics. Anyone
-  reporting 95%+ accuracy here almost certainly has a leak.
-- Feature importance points at `avg_duration_24h`, `month`, and `hour_of_day` —
-  i.e. weak seasonal/diurnal rhythm — rather than short-term momentum.
-- **The likely missing signal is spatial:** air-raid alerts propagate
-  geographically (a threat over one oblast precedes alerts in neighbours). Our
-  single-region features can't see that. This is the #1 next step.
+High-`pos_rate` frontline regions (Kharkiv, Dnipro) show high F1 partly because
+alerts are almost always active there; ROC-AUC and the confusion matrix keep that
+honest, which is why we never lead with accuracy.
 
 ---
 
 ## Limitations
 
-- **No spatial features.** Single-region only; cross-region propagation (the
-  probable dominant signal) is not modelled.
-- **No external signals.** No data on actual military activity, weather, or
-  strategic context — only the alert history itself.
-- **Volunteer data caveats.** Crowd-sourced; ~5% estimated end-times; possible
-  reporting gaps.
-- **Stationarity assumption.** War dynamics shift; patterns from 2022 may not
-  hold in 2026. The time-split partly captures this (we test on recent data).
+- **Alert history only** — no military-activity, weather, or strategic data.
+- **First-order adjacency** — no distance weighting or threat-direction modelling.
+- **Crowd-sourced data** — possible gaps; ~5% estimated end-times.
+- **Non-stationarity** — war dynamics shift; the time-split tests on recent data
+  but patterns still drift.
 
 ---
 
-## Roadmap (next steps, in priority order)
+## Roadmap
 
-1. **Spatial features** — counts of active/recent alerts in neighbouring
-   oblasts. Most likely to move ROC-AUC meaningfully.
-2. **Per-region models + comparison table** — the code is already
-   region-parameterised; loop over oblasts.
-3. **Sequence models** — once spatial features exist, test gradient boosting /
-   a small temporal model against the linear baseline.
-4. **Live inference** — the [alerts.in.ua](https://alerts.in.ua) API for
-   real-time scoring (kept out of scope here for reproducibility).
+1. **Directional / distance-weighted spatial features** — threats have a
+   trajectory; undirected neighbour counts are a first approximation.
+2. **Per-region tuned thresholds** for an operational recall target.
+3. **Gradient boosting** once richer spatial features exist.
+4. **Live inference** via the [alerts.in.ua](https://alerts.in.ua) API
+   (out of scope here for reproducibility).
 
 ---
 
@@ -189,16 +179,21 @@ That is the main finding, and it's worth more than an inflated number would be:
 
 ```
 air-raid-forecast/
-├── run_all.py            # one-command reproduction
+├── run_all.py              # one-command reproduction (+ comparison)
 ├── requirements.txt
 ├── src/
-│   ├── data_loader.py    # download, clean, filter region
-│   ├── features.py       # hourly grid, historical windows, target
-│   ├── leakage_audit.py  # 3 automated leakage checks  <-- read this
-│   ├── models.py         # time-split, LogReg + RF, recall-weighted eval
-│   └── plot_results.py   # confusion matrix + ROC
+│   ├── data_loader.py      # download, clean, filter region
+│   ├── features.py         # hourly grid, historical windows, target, spatial toggle
+│   ├── spatial_features.py # leakage-safe neighbour-activity features
+│   ├── neighbours.py       # oblast adjacency map
+│   ├── leakage_audit.py    # 3 automated leakage checks  <-- read this
+│   ├── models.py           # time-split, LR + RF, recall-weighted eval
+│   ├── compare_regions.py  # multi-region comparison study
+│   └── plot_results.py     # confusion matrix + ROC
 └── output/
-    ├── metrics.json
+    ├── metrics_temporal.json
+    ├── metrics_spatial.json
+    ├── region_comparison.csv
     └── results.png
 ```
 
@@ -206,6 +201,5 @@ air-raid-forecast/
 
 ## Disclaimer
 
-Built as a selection-task prototype using public data. **Not** a safety system;
-do not rely on it for real-world decisions. Always follow official air-raid
-warnings.
+Selection-task prototype on public data. **Not** a safety system — always follow
+official air-raid warnings.

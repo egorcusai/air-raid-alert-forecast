@@ -107,13 +107,15 @@ def pick_recall_threshold(y_true, y_prob, min_precision=0.5):
     return best_t
 
 
-def run(region: str = "Kyiv City"):
-    fm = build_feature_matrix(load_region(region))
+def run(region: str = "Kyiv City", spatial: bool = False):
+    fm = build_feature_matrix(load_region(region), region=region, spatial=spatial)
+    # Use whatever feature columns are present (temporal, or temporal+spatial).
+    feat_cols = [c for c in fm.columns if c not in ("hour", "target")]
     train, val, test = time_based_split(fm)
 
-    X_train, y_train = train[FEATURE_COLUMNS].values, train["target"].values
-    X_val, y_val = val[FEATURE_COLUMNS].values, val["target"].values
-    X_test, y_test = test[FEATURE_COLUMNS].values, test["target"].values
+    X_train, y_train = train[feat_cols].values, train["target"].values
+    X_val, y_val = val[feat_cols].values, val["target"].values
+    X_test, y_test = test[feat_cols].values, test["target"].values
 
     # Scale features for Logistic Regression (RF is scale-invariant but we
     # reuse the scaled matrix for LR only).
@@ -146,7 +148,7 @@ def run(region: str = "Kyiv City"):
 
     importances = dict(
         sorted(
-            zip(FEATURE_COLUMNS, (round(float(v), 4) for v in rf.feature_importances_)),
+            zip(feat_cols, (round(float(v), 4) for v in rf.feature_importances_)),
             key=lambda kv: kv[1], reverse=True,
         )
     )
@@ -164,15 +166,22 @@ def run(region: str = "Kyiv City"):
         print(f"    {k:18s} {v:.4f}")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    with open(os.path.join(OUTPUT_DIR, "metrics.json"), "w") as f:
+    suffix = "_spatial" if spatial else "_temporal"
+    with open(os.path.join(OUTPUT_DIR, f"metrics{suffix}.json"), "w") as f:
         json.dump(
-            {"region": region, "test_positive_rate": round(float(y_test.mean()), 4),
+            {"region": region, "spatial": spatial,
+             "test_positive_rate": round(float(y_test.mean()), 4),
              "results": results, "rf_feature_importance": importances},
             f, indent=2,
         )
-    print(f"\nSaved -> output/metrics.json")
+    print(f"\nSaved -> output/metrics{suffix}.json")
     return results, importances
 
 
 if __name__ == "__main__":
-    run("Kyiv City")
+    import sys
+    reg = sys.argv[1] if len(sys.argv) > 1 else "Kyiv City"
+    print("\n========== TEMPORAL FEATURES ONLY ==========")
+    run(reg, spatial=False)
+    print("\n========== TEMPORAL + SPATIAL FEATURES ==========")
+    run(reg, spatial=True)

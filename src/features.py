@@ -145,19 +145,39 @@ FEATURE_COLUMNS = [
 ]
 
 
-def build_feature_matrix(alerts: pd.DataFrame) -> pd.DataFrame:
-    """End-to-end: raw region alerts -> modelling table (features + target)."""
+def build_feature_matrix(alerts: pd.DataFrame, region: str | None = None,
+                         spatial: bool = False) -> pd.DataFrame:
+    """End-to-end: raw region alerts -> modelling table (features + target).
+
+    Parameters
+    ----------
+    alerts : pd.DataFrame
+        Single-region alert intervals (from data_loader.load_region).
+    region : str | None
+        Required if spatial=True; the region whose neighbours we look up.
+    spatial : bool
+        If True, append leakage-safe neighbour-activity features.
+    """
     grid = build_hourly_grid(alerts)
     grid = add_lag_features(grid)
+
+    feat_cols = list(FEATURE_COLUMNS)
+    if spatial:
+        if region is None:
+            raise ValueError("region must be given when spatial=True")
+        from spatial_features import add_spatial_features, SPATIAL_FEATURE_COLUMNS
+        grid = add_spatial_features(grid, region)
+        feat_cols = feat_cols + SPATIAL_FEATURE_COLUMNS
+
     grid = add_target(grid)
 
-    cols = ["hour"] + FEATURE_COLUMNS + ["target"]
+    cols = ["hour"] + feat_cols + ["target"]
     out = grid[cols].reset_index(drop=True)
 
     base = out["target"].mean()
     print(
         f"[build_feature_matrix] rows={len(out)}  "
-        f"positive_rate={base:.1%}  features={len(FEATURE_COLUMNS)}"
+        f"positive_rate={base:.1%}  features={len(feat_cols)}  spatial={spatial}"
     )
     return out
 

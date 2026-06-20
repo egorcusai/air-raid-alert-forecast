@@ -1,0 +1,11 @@
+region,pos_rate,auc_temporal,auc_spatial,spatial_gain,best_model,recall,precision,f1
+Zhytomyrska oblast,0.163,0.656,0.663,0.007,LR,0.585,0.241,0.342
+Lvivska oblast,0.192,0.657,0.652,-0.005,LR,0.761,0.247,0.373
+Kharkivska oblast,0.82,0.612,0.626,0.014,RF,0.869,0.833,0.85
+Dnipropetrovska oblast,0.797,0.606,0.605,-0.001,RF,0.876,0.811,0.842
+Vinnytska oblast,0.103,0.593,0.602,0.009,RF,0.32,0.149,0.203
+Ternopilska oblast,0.047,0.573,0.602,0.029,LR,0.403,0.071,0.121
+Kyivska oblast,0.331,0.592,0.592,0.0,LR,0.774,0.369,0.5
+Ivano-Frankivska oblast,0.046,0.539,0.578,0.039,LR,0.461,0.058,0.103
+Zaporizka oblast,0.607,0.562,0.558,-0.004,RF,0.664,0.639,0.652
+Kyiv City,0.19,0.547,0.548,0.001,LR,0.471,0.205,0.285

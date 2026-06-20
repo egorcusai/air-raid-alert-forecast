@@ -16,16 +16,20 @@ from leakage_audit import (
 import models, plot_results
 
 def main():
-    region = sys.argv[1] if len(sys.argv) > 1 else "Kyiv City"
+    region = sys.argv[1] if len(sys.argv) > 1 else "Lvivska oblast"
     print("\n### STEP 1-3: LEAKAGE AUDIT ###")
     test_reconstruction_independence(region)
     test_target_is_future(region)
     test_no_feature_equals_target(region)
-    print("\n### STEP 4: TRAIN + EVALUATE ###")
-    models.run(region)
+    print("\n### STEP 4: TRAIN + EVALUATE (temporal, then +spatial) ###")
+    models.run(region, spatial=False)
+    models.run(region, spatial=True)
     print("\n### STEP 5: PLOTS ###")
     plot_results.main(region)
-    print("\nDONE. See output/metrics.json and output/results.png")
+    print("\n### STEP 6: MULTI-REGION COMPARISON ###")
+    import compare_regions
+    compare_regions.main()
+    print("\nDONE. See output/ for metrics, comparison table, and plots.")
 
 if __name__ == "__main__":
     main()

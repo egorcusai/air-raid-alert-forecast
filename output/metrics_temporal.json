@@ -1,0 +1,72 @@
+{
+  "region": "Lvivska oblast",
+  "spatial": false,
+  "test_positive_rate": 0.1918,
+  "results": [
+    {
+      "model": "LogisticRegression@0.5",
+      "threshold": 0.5,
+      "precision": 0.2457,
+      "recall": 0.7572,
+      "f1": 0.371,
+      "roc_auc": 0.6574,
+      "confusion_matrix": {
+        "tn": 2738,
+        "fp": 3371,
+        "fn": 352,
+        "tp": 1098
+      }
+    },
+    {
+      "model": "LogisticRegression@tuned",
+      "threshold": 0.5,
+      "precision": 0.2457,
+      "recall": 0.7572,
+      "f1": 0.371,
+      "roc_auc": 0.6574,
+      "confusion_matrix": {
+        "tn": 2738,
+        "fp": 3371,
+        "fn": 352,
+        "tp": 1098
+      }
+    },
+    {
+      "model": "RandomForest@0.5",
+      "threshold": 0.5,
+      "precision": 0.2318,
+      "recall": 0.3545,
+      "f1": 0.2803,
+      "roc_auc": 0.5726,
+      "confusion_matrix": {
+        "tn": 4406,
+        "fp": 1703,
+        "fn": 936,
+        "tp": 514
+      }
+    },
+    {
+      "model": "RandomForest@tuned",
+      "threshold": 0.5,
+      "precision": 0.2318,
+      "recall": 0.3545,
+      "f1": 0.2803,
+      "roc_auc": 0.5726,
+      "confusion_matrix": {
+        "tn": 4406,
+        "fp": 1703,
+        "fn": 936,
+        "tp": 514
+      }
+    }
+  ],
+  "rf_feature_importance": {
+    "hour_of_day": 0.2878,
+    "month": 0.249,
+    "avg_duration_24h": 0.1854,
+    "day_of_week": 0.1538,
+    "alerts_last_24h": 0.0684,
+    "alerts_last_6h": 0.036,
+    "alerts_last_3h": 0.0196
+  }
+}

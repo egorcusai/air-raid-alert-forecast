@@ -13,7 +13,7 @@ from models import time_based_split
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "output")
 
-def main(region="Kyiv City"):
+def main(region="Lvivska oblast"):
     fm = build_feature_matrix(load_region(region))
     train, val, test = time_based_split(fm)
     Xtr, ytr = train[FEATURE_COLUMNS].values, train["target"].values
