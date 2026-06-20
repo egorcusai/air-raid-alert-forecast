@@ -1,21 +1,19 @@
 REFLECTION — Air-Raid Alert Risk Classification
 
 What went wrong?
-My first design forecast exact alert times and used a random train/test split.
-Both were wrong: exact-minute timing is false precision and near-impossible to
-validate, and a random split leaks the future into the past in a time series.
-A second, subtler leak appeared mid-build — the decision threshold was being
-tuned on the test set.
+My first design forecast exact alert times with a random train/test split. Both
+were wrong: exact timing is false precision, and random splits leak the future
+into the past in a time series. A second, subtler leak appeared mid-build — the
+decision threshold was being tuned on the test set.
 
 How did I adjust?
-I reframed the task as 3-hour-ahead binary classification with a strictly
-chronological train/validation/test split, moved threshold tuning to the
-validation block, and added automated leakage checks. When the model came out
-near-random, I hypothesised the missing signal was geographic propagation,
-added neighbouring-region features, and tested across ten regions.
+I reframed it as 3-hour-ahead classification with a strict chronological
+train/validation/test split, moved threshold tuning to validation, and added
+automated leakage checks. When the model came out near-random, I hypothesised the
+missing signal was geographic propagation and tested neighbour features across ten
+regions.
 
 Why is the final version better?
-It is leakage-free (proven by automated audit), honestly validated on recent
-held-out data, and it produces a real finding: western/peripheral regions are
-predictable and benefit from spatial features, while direct targets like Kyiv
-are not — a result that reproduces published work rather than an inflated score.
+It is leakage-free, honestly validated, and produces a real finding — western
+regions are predictable, direct targets are not — reproducing published work
+instead of an inflated score.
